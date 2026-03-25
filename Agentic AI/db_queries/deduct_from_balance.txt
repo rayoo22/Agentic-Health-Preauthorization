@@ -1,0 +1,3 @@
+UPDATE members 
+SET policy_balance = policy_balance - {amount} 
+WHERE member_id = {member_id}

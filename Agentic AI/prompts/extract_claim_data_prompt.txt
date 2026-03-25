@@ -1,0 +1,10 @@
+Extract claim information from this email. Return ONLY a JSON object with these fields:
+- member_id
+- diagnosis
+- requested_service
+- claim_amount (numeric value ONLY)
+
+Email Subject: {subject}
+Email Body: {body}
+
+Return JSON only, no explanation.

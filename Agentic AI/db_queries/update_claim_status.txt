@@ -1,0 +1,3 @@
+UPDATE claims 
+SET status = {1}, adjudication_reasoning = {2}
+WHERE claim_id = {3}

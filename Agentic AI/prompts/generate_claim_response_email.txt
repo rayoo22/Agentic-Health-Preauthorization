@@ -1,0 +1,22 @@
+Generate a professional healthcare claim response email with the following details:
+
+Claim Reference: {claim_id}
+Member: {member_name}
+Member ID: {member_id}
+Diagnosis: {diagnosis}
+Requested Service: {requested_service}
+Claim Amount: Ksh{claim_amount}
+Decision: {status}
+Reasoning: {reasoning}
+
+The email should:
+- Be professional and empathetic
+- Include the claim reference number
+- Clearly state the decision
+- Provide the reasoning
+- Include next steps if denied
+- Be concise but complete
+
+the email response should be a maximum of 50 words.
+ 
+Return only the email body text, no subject line.

@@ -1,0 +1,15 @@
+__pycache__/
+agenticai_credentials.json
+credentials.json
+myenv/
+requirements.txt
+token.pickle
+.autopilot.json
+.cursor/
+.env
+chunks_metadata.pickle
+policy_index.faiss
+restore_policies_table.sql
+test_data/
+chunks_metadata.pkl
+policy_index.faiss
