@@ -1,5 +1,7 @@
 # Agentic AI Healthcare Claims Processing System
 
+Project Repository: https://github.com/rayoo22/Agentic-Health-Preauthorization
+
 This project automates healthcare claim intake and adjudication from email. It reads claim emails, extracts structured claim data with an LLM, validates member and balance information from PostgreSQL, retrieves policy context with RAG, makes a claim decision, sends a response email, and can optionally send a second judge report using Vertex AI.
 
 The current workflow is intentionally conservative. If critical claim fields are missing, vague, or ambiguous, the system flags the issue and can stop the claim before downstream adjudication rather than forcing a weakly supported decision.
