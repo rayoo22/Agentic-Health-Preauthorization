@@ -1,10 +1,70 @@
-Extract claim information from this email. Return ONLY a JSON object with these fields:
+Extract claim information from this email. Return ONLY a valid JSON object.
+
+Use these rules:
+- Extract only information that is explicitly stated or can be directly and safely inferred from the text.
+- If a field is missing, unclear, or ambiguous, return null for that field.
+- Do not guess, invent, or fill in details that are not clearly supported by the email.
+- If wording is ambiguous, preserve the closest supported wording instead of over-normalizing it.
+- claim_amount must be a numeric value only, with no currency symbols or text.
+
+Return this exact JSON structure:
+{
+  "member_id": "string or null",
+  "diagnosis": "string or null",
+  "requested_service": "string or null",
+  "claim_amount": "number or null",
+  "missing_fields": ["list of required fields that are missing or unclear"],
+  "ambiguity_flags": ["list of fields whose wording is ambiguous"]
+}
+
+Required fields:
 - member_id
 - diagnosis
 - requested_service
-- claim_amount (numeric value ONLY)
+- claim_amount
+
+Examples:
+
+Example 1
+Email Subject: Preauthorization Request for MRI Scan
+Email Body: Please approve an MRI scan for member M12345 who has severe lower back pain. The requested amount is 12000.
+Output:
+{
+  "member_id": "M12345",
+  "diagnosis": "severe lower back pain",
+  "requested_service": "MRI scan",
+  "claim_amount": 12000,
+  "missing_fields": [],
+  "ambiguity_flags": []
+}
+
+Example 2
+Email Subject: Claim Request
+Email Body: Kindly assist member M67890. The treatment will cost 3000.
+Output:
+{
+  "member_id": "M67890",
+  "diagnosis": null,
+  "requested_service": null,
+  "claim_amount": 3000,
+  "missing_fields": ["diagnosis", "requested_service"],
+  "ambiguity_flags": []
+}
+
+Example 3
+Email Subject: Need help with reimbursement
+Email Body: Member M54321 was seen for chest infection and may need medicine after the review. Estimated cost is 3800.
+Output:
+{
+  "member_id": "M54321",
+  "diagnosis": "chest infection",
+  "requested_service": "medicine after the review",
+  "claim_amount": 3800,
+  "missing_fields": [],
+  "ambiguity_flags": ["requested_service"]
+}
 
 Email Subject: {subject}
 Email Body: {body}
 
-Return JSON only, no explanation.
+Return JSON only. No explanation. No markdown.

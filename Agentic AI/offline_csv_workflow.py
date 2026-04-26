@@ -11,7 +11,11 @@ from openai_agent import OpenAIEmailAgent
 from RAG.query_policy_rag import query_policy_rag, format_policy_context
 
 
+REQUIRED_EXTRACTION_FIELDS = ("member_id", "diagnosis", "requested_service", "claim_amount")
+
+
 def normalize_amount(value):
+    # Convert amount-like values into floats so comparisons work consistently.
     if value in (None, ""):
         return None
     try:
@@ -21,6 +25,7 @@ def normalize_amount(value):
 
 
 def values_match(expected, actual):
+    # Compare expected vs actual values and return TRUE/FALSE for evaluation columns.
     if expected in (None, "", "UNKNOWN"):
         return ""
 
@@ -39,9 +44,12 @@ def values_match(expected, actual):
 
 
 def run_case(row, agent, members_db):
+    # This is the core offline pipeline for one CSV row.
+    # It mirrors the main workflow, but uses subject/body from CSV instead of Gmail.
     subject = row.get("subject", "")
     body = row.get("body", "")
 
+    # Step 1: run LLM-based extraction on the synthetic email text.
     claim_data = agent.extract_claim_data(subject, body)
 
     result = {
@@ -61,11 +69,33 @@ def run_case(row, agent, members_db):
         result["actual_reason"] = "Could not extract claim data"
         return result
 
+    missing_fields = claim_data.get("missing_fields") or []
+    ambiguity_flags = claim_data.get("ambiguity_flags") or []
+    blocking_reasons = []
+
+    for field in REQUIRED_EXTRACTION_FIELDS:
+        if claim_data.get(field) in (None, "") and field not in missing_fields:
+            missing_fields.append(field)
+
+    for field in missing_fields:
+        blocking_reasons.append(f"{field.replace('_', ' ').capitalize()} missing")
+
+    for field in ambiguity_flags:
+        if field in {"diagnosis", "requested_service"}:
+            blocking_reasons.append(f"{field.replace('_', ' ').capitalize()} ambiguous")
+
+    # Step 2: save extracted fields into the output row for later evaluation.
     result["actual_member_id"] = claim_data.get("member_id", "")
     result["actual_diagnosis"] = claim_data.get("diagnosis", "")
     result["actual_requested_service"] = claim_data.get("requested_service", "")
     result["actual_claim_amount"] = claim_data.get("claim_amount", "")
 
+    if blocking_reasons:
+        result["actual_final_decision"] = "EXTRACTION_FAILED"
+        result["actual_reason"] = "; ".join(dict.fromkeys(blocking_reasons))
+        return result
+
+    # Step 3: perform rule-based member validation using the database.
     member_id = claim_data.get("member_id")
     member = members_db.get_member(member_id) if member_id else None
     result["actual_member_exists"] = "TRUE" if member else "FALSE"
@@ -81,6 +111,7 @@ def run_case(row, agent, members_db):
         result["actual_reason"] = "Claim amount missing or invalid"
         return result
 
+    # Step 4: apply the deterministic balance eligibility rule.
     balance_sufficient = member["policy_balance"] > claim_amount
     result["actual_balance_sufficient"] = "TRUE" if balance_sufficient else "FALSE"
 
@@ -92,11 +123,14 @@ def run_case(row, agent, members_db):
         )
         return result
 
+    # Step 5: retrieve policy context through the RAG layer.
     relevant_chunks = query_policy_rag(
         claim_data.get("diagnosis", ""),
         claim_data.get("requested_service", ""),
     )
     policy_context = format_policy_context(relevant_chunks)
+
+    # Step 6: run clinical adjudication using the retrieved policy context.
     adjudication = agent.clinical_adjudication(
         claim_data.get("diagnosis", ""),
         claim_data.get("requested_service", ""),
@@ -109,6 +143,7 @@ def run_case(row, agent, members_db):
 
 
 def build_output_row(row, result):
+    # Merge the original labeled row with actual outputs and match indicators.
     output = dict(row)
     output.update(result)
 
@@ -139,6 +174,7 @@ def build_output_row(row, result):
 def process_csv(input_csv: Path, output_csv: Path, shuffle: bool = False, seed: int | None = None):
     load_dotenv()
 
+    # Load the benchmark dataset from CSV.
     with input_csv.open("r", encoding="utf-8-sig", newline="") as in_handle:
         reader = csv.DictReader(in_handle)
         rows = list(reader)
@@ -150,17 +186,21 @@ def process_csv(input_csv: Path, output_csv: Path, shuffle: bool = False, seed: 
         rng = random.Random(seed)
         rng.shuffle(rows)
 
+    # Create the components reused across all cases.
     agent = OpenAIEmailAgent()
     members_db = MembersDB()
 
     try:
         output_rows = []
         for row in rows:
+            # Process one case at a time, then append its evaluated output.
             result = run_case(row, agent, members_db)
             output_rows.append(build_output_row(row, result))
     finally:
+        # Always close the DB connection, even if one case fails.
         members_db.close()
 
+    # Write the full evaluated dataset back to disk.
     fieldnames = list(output_rows[0].keys())
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     with output_csv.open("w", encoding="utf-8", newline="") as out_handle:
@@ -172,6 +212,7 @@ def process_csv(input_csv: Path, output_csv: Path, shuffle: bool = False, seed: 
 
 
 def parse_args():
+    # Read file locations and optional shuffle settings from CLI or .env defaults.
     parser = argparse.ArgumentParser(description="Offline CSV ingestion workflow for synthetic claim emails.")
     parser.add_argument(
         "--input",
@@ -183,14 +224,26 @@ def parse_args():
         default=os.getenv("OFFLINE_CSV_OUTPUT", "test_data/hundred_mixed_results.csv"),
         help="Output CSV path.",
     )
-    parser.add_argument("--shuffle", action="store_true", help="Shuffle dataset rows before processing.")
-    parser.add_argument("--seed", type=int, help="Optional random seed for reproducible shuffling.")
+    parser.add_argument(
+        "--shuffle",
+        action="store_true",
+        default=os.getenv("OFFLINE_CSV_SHUFFLE", "false").lower() == "true",
+        help="Shuffle dataset rows before processing.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=int(os.getenv("OFFLINE_CSV_SEED")) if os.getenv("OFFLINE_CSV_SEED") else None,
+        help="Optional random seed for reproducible shuffling.",
+    )
     return parser.parse_args()
 
 
 def main():
     load_dotenv()
     args = parse_args()
+
+    # Entry point: resolve config and run the offline benchmark.
     process_csv(
         Path(args.input),
         Path(args.output),

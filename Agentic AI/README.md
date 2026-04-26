@@ -2,6 +2,8 @@
 
 This project automates healthcare claim intake and adjudication from email. It reads claim emails, extracts structured claim data with an LLM, validates member and balance information from PostgreSQL, retrieves policy context with RAG, makes a claim decision, sends a response email, and can optionally send a second judge report using Vertex AI.
 
+The current workflow is intentionally conservative. If critical claim fields are missing, vague, or ambiguous, the system flags the issue and can stop the claim before downstream adjudication rather than forcing a weakly supported decision.
+
 ## What The System Does
 
 The main workflow is built around Gmail:
@@ -12,13 +14,17 @@ The main workflow is built around Gmail:
    - `diagnosis`
    - `requested_service`
    - `claim_amount`
-3. Check whether the member exists.
-4. Check whether the member has enough policy balance.
-5. Retrieve relevant policy sections from the local RAG index.
-6. Run clinical adjudication with policy context.
-7. Store and update claim records in PostgreSQL.
-8. Send a claim decision email.
-9. Optionally send a detailed Vertex AI judge evaluation in the same Gmail thread.
+3. Validate extracted output and flag:
+   - missing fields
+   - ambiguous fields
+   - invalid claim amounts
+4. Check whether the member exists.
+5. Check whether the member has enough policy balance.
+6. Retrieve relevant policy sections from the local RAG index.
+7. Run clinical adjudication with policy context.
+8. Store and update claim records in PostgreSQL.
+9. Send a claim decision email.
+10. Optionally send a detailed Vertex AI judge evaluation in the same Gmail thread.
 
 The repo also includes an offline CSV workflow for evaluation, plus tooling for generating and sending synthetic `.eml` claim emails.
 
@@ -32,6 +38,7 @@ This is the live end-to-end workflow. It:
 
 - reads unread claim emails from Gmail
 - processes each claim through extraction, validation, RAG, and adjudication
+- stops incomplete or ambiguous claims before adjudication when critical information is missing
 - sends a decision response
 - marks the original email as read
 - optionally sends a Vertex AI judge report in the same thread
@@ -43,9 +50,10 @@ Entry point: `Agentic AI/offline_csv_workflow.py`
 This workflow is for evaluation and experimentation. It:
 
 - reads claim inputs from a CSV instead of Gmail
-- runs extraction, member lookup, balance check, RAG, and adjudication
+- runs extraction, output validation, member lookup, balance check, RAG, and adjudication
 - writes results to a CSV
 - compares outputs with expected labels if those columns are present
+- supports per-class, stage-wise, and final-decision evaluation
 
 It does not:
 
@@ -104,6 +112,13 @@ It does not:
 - `Agentic AI/prompts/clinical_adjudication_prompt.txt`
 - `Agentic AI/prompts/generate_claim_response_email.txt`
 
+The extraction and adjudication prompts use conservative instructions and few-shot examples so the models:
+
+- return structured JSON only
+- avoid guessing unsupported claim details
+- preserve missingness and ambiguity explicitly
+- deny or stop claims when critical information is too weak for safe adjudication
+
 ### Vertex AI Judge
 
 - `Agentic AI/vertex_judge.py`
@@ -127,6 +142,9 @@ It does not:
 - `Agentic AI/evaluate_results.py`
   Summarizes results per class and per metric.
 
+- `Agentic AI/compute_metrics.py`
+  Computes overall decision metrics, per-class accuracy, stage success rates, and a confusion matrix.
+
 - `Agentic AI/evaluation_notebook.ipynb`
   Notebook for analyzing saved results only. It does not rerun the LLM.
 
@@ -146,6 +164,7 @@ It does not:
 Gmail Inbox
   -> Email Body Extraction
   -> OpenAI Claim Extraction
+  -> Extraction Validation / Gating
   -> Member Lookup / Balance Check
   -> RAG Policy Retrieval
   -> OpenAI Clinical Adjudication
@@ -153,7 +172,7 @@ Gmail Inbox
   -> Optional Vertex AI Judge Email
 ```
 
-Offline evaluation uses the same middle stages, but replaces Gmail input with CSV rows.
+Offline evaluation uses the same middle stages, but replaces Gmail input with CSV rows and writes comparable benchmark outputs to disk for later analysis.
 
 ## Requirements
 
@@ -280,11 +299,32 @@ Optional:
 python offline_csv_workflow.py --shuffle --seed 42
 ```
 
+What it does:
+
+- reads subject/body pairs from the CSV benchmark
+- runs the same extraction, validation, retrieval, and adjudication logic used in the workflow core
+- writes `actual_*` outputs and `match_*` evaluation columns to the output CSV
+- can return `EXTRACTION_FAILED` when critical information is missing or ambiguous
+
 ### Evaluate Saved Offline Results
 
 ```bash
 python evaluate_results.py --input test_data/hundred_mixed_results.csv --output test_data/hundred_mixed_summary.csv
 ```
+
+### Compute Overall Metrics
+
+```bash
+python compute_metrics.py --input test_data/hundred_mixed_results.csv
+```
+
+This writes metric outputs to `test_data/metrics/`, including:
+
+- `summary_metrics.json`
+- `stage_success_rates.csv`
+- `per_class_accuracy.csv`
+- `confusion_matrix.csv`
+- `confusion_matrix.png` if `matplotlib` is installed
 
 ### Analyze Results In Notebook
 
@@ -317,6 +357,7 @@ The best evaluation strategy in this repo is:
 2. Use labeled datasets with expected outputs.
 3. Evaluate stage-by-stage:
    - extraction
+   - extraction validation / gating
    - member existence
    - balance sufficiency
    - final decision
@@ -353,6 +394,7 @@ gcloud auth application-default login
 
 - The Gmail workflow is the most complete production-style path.
 - The offline workflow is the best place to benchmark extraction and reasoning.
+- The offline workflow now reflects the conservative system behavior used in the dissertation write-up.
 - The synthetic email sender is useful for realistic Gmail inbox testing.
 - Vertex judge failures do not stop the main claim-processing workflow.
 

@@ -1,0 +1,51 @@
+Received: from 941609838431
+	named unknown
+	by gmailapi.google.com
+	with HTTPREST;
+	Wed, 15 Apr 2026 04:00:18 -0700
+Received: from 941609838431
+	named unknown
+	by gmailapi.google.com
+	with HTTPREST;
+	Wed, 15 Apr 2026 04:00:18 -0700
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+to: ryankibet14@gmail.com
+subject: Judge Evaluation - Claim #67 - APPROVED
+Date: Wed, 15 Apr 2026 04:00:18 -0700
+Message-Id: <CAP_33oYpmYG3g1QfuXm5irhsf15tFoZoC0-xd7GJ0f5QazRwqQ@mail.gmail.com>
+From: ryankibet14@gmail.com
+
+Vertex AI Judge Evaluation Report
+
+Original Email Subject: Claim for Pediatric Consultation
+Original Sender: agenticai22@gmail.com
+Claim Reference: 67
+
+Extracted Claim Data
+- Member ID: MEM104
+- Member Name: Lydia Wanjiku
+- Diagnosis: upper respiratory tract infection
+- Requested Service: pediatric consultation
+- Claim Amount: 3000
+
+Primary Workflow Output
+- Final Decision: APPROVED
+- Reasoning: Policy balance: Ksh. 43000.0. Clinical: The requested pediatric consultation is a covered service under outpatient consultations as per Policy POL001 (Section 3). There are no exclusions applicable to this service for the diagnosis of an upper respiratory tract infection.
+
+Vertex Judge Output
+- Judge Agrees: False
+- Judge Verdict: INCORRECT_POLICY_CONTEXT
+- Judge Score: 0.2
+- Judge Reasoning: The proposed decision is based on Policy POL001, but the member's policy ID is POL004. Without the correct policy context for POL004, the coverage, exclusions, and terms and conditions cannot be accurately assessed. Therefore, the proposed approval is not valid.
+
+Stage Evaluation
+- Extraction: Score: 1.0 | Assessment: All relevant fields (member_id, diagnosis, requested_service, claim_amount) were accurately extracted from the email body.
+- Member Validation: Score: 1.0 | Assessment: The member ID 'MEM104' is valid and the member status is 'ACTIVE'.
+- Balance Check: Score: 1.0 | Assessment: The policy balance of Ksh 43000.0 is sufficient to cover the claim amount of Ksh 3000.
+- Policy Alignment: Score: 0.0 | Assessment: The policy context provided is for 'Policy POL001', but the member's policy ID is 'POL004'. The proposed decision's reasoning incorrectly references POL001, making it impossible to verify policy alignment for the actual member's policy.
+- Final Decision: Score: 0.0 | Assessment: The proposed decision to 'APPROVE' is based on policy information (POL001) that does not match the member's policy (POL004). Therefore, the decision is fundamentally flawed and cannot be validated.
+
+Judge Flags
+- Policy Mismatch: The policy context provided does not match the member's policy ID.

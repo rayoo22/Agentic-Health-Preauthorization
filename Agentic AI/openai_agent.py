@@ -3,6 +3,24 @@ import os
 import json 
 from pathlib import Path
 
+
+REQUIRED_CLAIM_FIELDS = ("member_id", "diagnosis", "requested_service", "claim_amount")
+VAGUE_TEXT_VALUES = {
+    "",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "unknown",
+    "not provided",
+    "not specified",
+    "unspecified",
+    "medical treatment",
+    "treatment",
+    "service",
+}
+
+
 class OpenAIEmailAgent:
     """AI agent for processing healthcare claims using OpenAI GPT models
     
@@ -113,10 +131,77 @@ Return JSON only, no explanation."""
                 content = content[3:-3].strip()
                 
             # Parse JSON and return structured data
-            return json.loads(content)
+            claim_data = json.loads(content)
+            return self._validate_claim_data(claim_data)
         except:
             # Return None if JSON parsing fails
             return None
+
+    def _validate_claim_data(self, claim_data):
+        """Validate extracted claim data and mark incomplete or vague fields."""
+        if not isinstance(claim_data, dict):
+            return None
+
+        normalized = {
+            "member_id": claim_data.get("member_id"),
+            "diagnosis": claim_data.get("diagnosis"),
+            "requested_service": claim_data.get("requested_service"),
+            "claim_amount": claim_data.get("claim_amount"),
+            "missing_fields": claim_data.get("missing_fields") or [],
+            "ambiguity_flags": claim_data.get("ambiguity_flags") or [],
+        }
+
+        if not isinstance(normalized["missing_fields"], list):
+            normalized["missing_fields"] = []
+        if not isinstance(normalized["ambiguity_flags"], list):
+            normalized["ambiguity_flags"] = []
+
+        for field in REQUIRED_CLAIM_FIELDS:
+            value = normalized.get(field)
+
+            if field == "claim_amount":
+                if value in (None, ""):
+                    normalized["claim_amount"] = None
+                    self._add_flag(normalized["missing_fields"], field)
+                    continue
+                try:
+                    normalized["claim_amount"] = float(value)
+                except (TypeError, ValueError):
+                    normalized["claim_amount"] = None
+                    self._add_flag(normalized["missing_fields"], field)
+                    self._add_flag(normalized["ambiguity_flags"], field)
+                continue
+
+            cleaned = self._normalize_text_field(value)
+            normalized[field] = cleaned
+            if cleaned is None:
+                self._add_flag(normalized["missing_fields"], field)
+                continue
+
+            if self._is_vague_placeholder(cleaned):
+                self._add_flag(normalized["ambiguity_flags"], field)
+
+        for flagged_field in tuple(normalized["ambiguity_flags"]):
+            if flagged_field in {"diagnosis", "requested_service"}:
+                field_value = normalized.get(flagged_field)
+                if field_value is None or self._is_vague_placeholder(field_value):
+                    normalized[flagged_field] = None
+                    self._add_flag(normalized["missing_fields"], flagged_field)
+
+        return normalized
+
+    def _normalize_text_field(self, value):
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    def _is_vague_placeholder(self, value):
+        return str(value).strip().lower() in VAGUE_TEXT_VALUES
+
+    def _add_flag(self, items, value):
+        if value not in items:
+            items.append(value)
     
     def clinical_adjudication(self, diagnosis, requested_service, policy_context=None):
         """Perform AI-driven clinical adjudication for medical necessity
